@@ -65,14 +65,12 @@ generate = generateFrom start
 -- | We don't want to use `unwords` because we don't want to put spaces in
 -- | front of punctuation. This is a somewhat hacky replacement.
 smartJoin :: [Token] -> String
-smartJoin = loop []
+smartJoin = dropWhile (== ' ') . concat . addSeparators
   where
-    loop :: [Token] -> [Token] -> String
-    loop acc [] = concat $ reverse acc
-    loop [] (t:ts) = loop [t] ts
-    loop acc (t:ts)
-      | t `elem` [".", ",", "?"] = loop (t:acc) ts
-      | otherwise = loop (t:" ":acc) ts
+    addSeparators = concatMap addSeparator
+    addSeparator word
+      | word `elem` ["?", ",", "."] = ["", word]
+      | otherwise                   = [" ", word]
 
 -- | And now we're set up to generate random Questions. We need to specify how
 -- | many answers we want, a GetNextToken function for the questions themselves,
