@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Science Quiz</title>
+    <style>
+    .right-side {
+      position: fixed;
+      top: 0;
+      left: 500px;
+      width: 200px;
+      height: 100%;
+    }
+
+    .question {
+      max-width: 480px;
+      font-weight: bold;
+      font-size: 20px;
+      margin: 10px;
+    }
+    .answer {
+      max-width: 400px;
+      padding: 5px;
+      margin-top: 5px;
+      margin-bottom: 5px;
+      border: 1px solid black;
+      text-align: center;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+
+    .answer.unanswered {
+      background-color: lightgray;
+    }
+
+    .answer.chosen {
+      border: 3px solid black;
+      margin: 0px;
+    }
+
+    .answer.correct {
+      background-color: lightgreen;
+    }
+
+    .answer.correct.chosen {
+      background-color: green;
+      color: white;
+    }
+
+    .answer.wrong {
+      background-color: salmon;
+    }
+
+    .answer.wrong.chosen {
+      background-color: red;
+      color: white;
+    }
+
+    .score {
+      font-size: 50px;
+
+    }
+
+    </style>
+  </head>
+  <body>
+    <div id="app"></div> <!-- Our container -->
+    <script src="./science-questions.js"></script>
+  </body>
+</html>
