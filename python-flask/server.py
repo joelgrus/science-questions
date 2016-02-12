@@ -1,5 +1,6 @@
 from flask import Flask
 # you need to pip install flask-cors, or else you'll run into problems
+# trying to call this API cross-origin
 from flask.ext.cors import CORS, cross_origin
 import json
 import os
@@ -9,21 +10,29 @@ app = Flask(__name__)
 cors = CORS(app)
 app.config['CORS_HEADERS'] = 'Content-Type'
 
+# sentinel tokens
 START = "__START__"
 STOP = "__STOP__"
 
+# load the transitions
 with open("questions.json") as f:
     q_transitions = json.loads(f.read())
 
 with open("answers.json") as f:
     a_transitions = json.loads(f.read())
 
+# naively you'd join "words" together with spaces, but we don't want to put
+# spaces before punctuation marks.
 def smart_join(words):
+    # the separator that *precedes* each word
     separators = ["" if w in ['.', ',', '?'] else " " for w in words]
     return ''.join(token
                    for word, sep in zip(words, separators)
                    for token in [sep, word]).strip()
 
+# generate a sentence by starting with the START sentinel and repeatedly
+# choosing random subsequence words from the provided transitions, stopping
+# when the STOP sentinel is reached
 def markov_gen(transitions):
     word = START
     words = []
@@ -34,11 +43,10 @@ def markov_gen(transitions):
         else:
             words.append(word)
 
-with open('questions.json', 'w') as f:
-    f.write(json.dumps(q_transitions))
-
-with open('answers.json', 'w') as f:
-    f.write(json.dumps(a_transitions))
+# the JSON schema for a question looks like
+# { questionText : "What's your favorite language?"
+#   answers : ["Python", "JavaScript", "Haskell", "Ruby"]
+#   correctAnswer : 2 }
 
 @app.route('/question')
 @cross_origin()
