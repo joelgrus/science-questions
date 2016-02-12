@@ -1,0 +1,26 @@
+{
+  "name": "purescript-pux",
+  "version": "1.0.0",
+  "moduleType": [
+    "node"
+  ],
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "output"
+  ],
+  "dependencies": {
+    "purescript-console": "^0.1.0",
+    "purescript-pux": "~0.1.0",
+    "purescript-lists": "~0.7.9",
+    "purescript-maps": "~0.5.4",
+    "purescript-react": "~0.6.0",
+    "purescript-foldable-traversable": "~0.4.2",
+    "purescript-aff": "~0.14.0",
+    "purescript-affjax": "~0.10.3"
+  },
+  "resolutions": {
+    "purescript-aff": "~0.14.0"
+  }
+}
