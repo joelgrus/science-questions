@@ -12,6 +12,7 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Aeson
 import Data.Aeson.TH
 import qualified Data.ByteString.Lazy as BS
+import Data.List (unfoldr)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust)
 import Network.Wai
@@ -25,8 +26,8 @@ import System.Random (randomRIO)
 type Answer = String
 
 data Question = Question
-  { questionText :: String
-  , answers :: [Answer]
+  { questionText  :: String
+  , answers       :: [Answer]
   , correctAnswer :: Int
   } deriving (Eq, Show)
 
@@ -45,22 +46,17 @@ stop = "__STOP__"
 -- | Given a token, find a next token in an effectful way. (Typically random.)
 type GetNextToken = Token -> IO Token
 
--- | Given an initial token, and an effectful way of generating subsequent
--- | tokens, produce a sentence by generating tokens until the 'stop' sentinel
--- | is reached.
-generateFrom :: Token -> GetNextToken -> IO String
-generateFrom startToken getNextToken = loop startToken []
+-- | Produce a sentence by generating tokens up until the 'stop' sentinel.
+-- | (I bet there's a magical one-line way of doing this.)
+generate :: GetNextToken -> IO String
+generate nextAfter = loop start []
   where
     loop :: Token -> [Token] -> IO String
     loop prev tokens = do
-      token <- getNextToken prev
+      token <- nextAfter prev
       if token == stop
         then return $ smartJoin tokens
         else loop token (tokens ++ [token])
-
--- | Typically we want to generate starting from the 'start' sentinel
-generate :: GetNextToken -> IO String
-generate = generateFrom start
 
 -- | We don't want to use `unwords` because we don't want to put spaces in
 -- | front of punctuation. This is a somewhat hacky replacement.
@@ -69,7 +65,7 @@ smartJoin = dropWhile (== ' ') . concat . addSeparators
   where
     addSeparators = concatMap addSeparator
     addSeparator word
-      | word `elem` ["?", ",", "."] = ["", word]
+      | word `elem` ["?", ",", "."] = ["",  word]
       | otherwise                   = [" ", word]
 
 -- | And now we're set up to generate random Questions. We need to specify how
@@ -95,18 +91,18 @@ pick xs = randomRIO (0, (length xs - 1)) >>= return . (xs !!)
 randomNextToken :: Transitions -> GetNextToken
 randomNextToken transitions token =
   case M.lookup token transitions of
-    Nothing -> return stop
     Just tokens -> pick tokens
+    _           -> return stop
 
 -- | Load some (JSON-serialized) transitions from a file
-loadTransitions :: String -> IO (Maybe Transitions)
-loadTransitions = liftM decode . BS.readFile
+loadTransitions :: String -> IO Transitions
+loadTransitions = fmap fromJust . liftM decode . BS.readFile
 
 questionTransitions :: IO Transitions
-questionTransitions = fmap fromJust $ loadTransitions "questions.json"
+questionTransitions = loadTransitions "questions.json"
 
 answerTransitions :: IO Transitions
-answerTransitions = fmap fromJust $ loadTransitions "answers.json"
+answerTransitions = loadTransitions "answers.json"
 
 -- | Just some CORS boilerplate so we can call this API from other IP addresses.
 questionCors :: Middleware

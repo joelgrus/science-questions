@@ -13,14 +13,13 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..), isJust)
 import Data.Maybe.Unsafe (fromJust)
 import Data.Monoid (Monoid, mempty)
-import Data.Foldable (foldl)
+import Data.Foldable (foldMap)
 import Data.Foreign
 import Data.Foreign.Class (IsForeign, readProp, readJSON)
 import Data.List (singleton)
 import Data.Tuple (uncurry)
 import Network.HTTP.Affjax (AJAX(), get)
 import Pux
-import Pux.DOM (Attrs(..))
 import Pux.DOM.HTML.Elements (div, p, button, text)
 import Pux.DOM.HTML.Attributes (onClick, send, className)
 import Pux.Render.DOM
@@ -29,24 +28,6 @@ import qualified Signal.Channel as S
 questionServiceUrl :: String
 --questionServiceUrl = "http://localhost:8080/question"
 questionServiceUrl = "http://54.174.99.38/question"
-
--- | In several places we need to `map` over both an array's elements and its
--- | indexes. (This is a natural operation in JavaScript, less so here.)
-enumerateMap :: forall a b. (a -> Int -> b) -> Array a -> Array b
-enumerateMap f xs = map (uncurry f) pairs
-  where pairs = zip xs (0 .. (length xs - 1))
-
--- | It took me a while to figure out how to "render" a variable size array of
--- | objects. Eventually I realized that VirtualDOM is a Monoid, so that if I
--- | have e.g. renderOne :: a -> VirtualDOM, then I render xs :: Array a with
--- |    mconcat $ map renderOne xs
--- | I don't know why mconcat isn't built in to purescript.
-mconcat :: forall m. (Monoid m) => Array m -> m
-mconcat = foldl append mempty
-
-type Answer = String
-
-type AnswerId = Int
 
 -- | We define a newtype for Question so we can create an IsForeign instance.
 newtype Question = Question {
@@ -57,6 +38,8 @@ newtype Question = Question {
 }
 
 type QuestionId = Int
+type Answer = String
+type AnswerId = Int
 
 -- | Deserializing from JSON is pretty straightforward, we just need to add an
 -- | extra Nothing value for chosenAnswer.
@@ -73,9 +56,9 @@ instance questionIsForeign :: IsForeign Question where
     }
 
 data Action =
-    NewGame                     -- start a new game
-  | ClickAnswer Int Int         -- click on questionId answerId
-  | QuestionReceived Question   -- receive an AJAX response with a question
+    NewGame                          -- start a new game
+  | ClickAnswer QuestionId AnswerId  -- click on an answer
+  | QuestionReceived Question        -- receive an AJAX response with a question
 
 type State = {
   score              :: Int,
@@ -103,17 +86,17 @@ answerClicked questionId answerId state =
 
 -- | we only want to *actually* add the question if we're waiting for it.
 -- | otherwise, we just return the state as is
-appendQuestion :: State -> Question -> State
-appendQuestion state question =
+appendQuestion :: Question -> State -> State
+appendQuestion question state =
   if state.waitingForQuestion
   then state { questions = state.questions ++ [question],
                waitingForQuestion = false }
   else state
 
 -- How to update the state (and perform effects) for each action type.
-update :: forall eff. Update (ajax :: AJAX,
-                              err :: EXCEPTION,
-                              console :: CONSOLE| eff) State Action
+update :: forall eff. Update (ajax    :: AJAX,
+                              err     :: EXCEPTION,
+                              console :: CONSOLE    | eff) State Action
 update action state input =
   case action of
     -- for a NewGame action, we need to reset the state to the initialState
@@ -129,10 +112,10 @@ update action state input =
       }
     -- for the result of a new question AJAX call, try to update the state
     QuestionReceived question ->
-      { state: appendQuestion state question
+      { state: appendQuestion question state
       , effects: [] }
   where
-    -- AJAX boilerplate
+    -- AJAX boilerplate that I don't totally understand
     requestQuestion =
       launchAff $ do
         res <- get questionServiceUrl
@@ -143,6 +126,7 @@ update action state input =
 
 -- | generate the css classes for an answer based on
 -- |    isAnswered -> isCorrect -> isChosen
+-- | there's probably a cleaner way to do this
 answerClasses :: Boolean -> Boolean -> Boolean -> String
 answerClasses false _    _      = "answer"
 answerClasses true  true  false = "answer correct"
@@ -150,26 +134,45 @@ answerClasses true  true  true  = "answer correct chosen"
 answerClasses true  false false = "answer wrong"
 answerClasses true  false true  = "answer wrong chosen"
 
-renderQuestions :: Array Question -> VirtualDOM
-renderQuestions questions = mconcat $ enumerateMap (\(Question q) questionId -> do
+-- | An answer just gets rendered as a single div with classes to indicate
+-- | whether its question has been answered, whether it's the right answer, and
+-- | whether it's the chosen answer. If the question hasn't been answered yet,
+-- | we add a click handler as well.
+renderAnswer :: Question -> QuestionId -> Answer -> AnswerId -> VirtualDOM
+renderAnswer (Question q) questionId answer answerId =
+  div ! className classes ! clickHandlerIfUnanswered $ text answer
+  where
+    classes = answerClasses isAnswered isCorrect isChosen
+    clickHandlerIfUnanswered =
+      if isAnswered
+      then Attrs [] [] -- no-op "attribute"
+      else onClick (send $ ClickAnswer questionId answerId)
+    isAnswered = isJust q.chosenAnswer
+    isChosen   = isAnswered && answerId == fromJust q.chosenAnswer
+    isCorrect  = isAnswered && answerId == q.correctAnswer
+
+-- | VirtualDOM is a Monoid, so if we have an array of inputs `xs` and some
+-- | function that maps each `x` to a VirtualDOM element, we can use `foldMap`
+-- | to combine the results into a single VirtualDOM element. It turns out we'll
+-- | need both an element and its index to create a VirtualDOM element; this
+-- | helper function provides that `map`
+foldMapWithIndex :: forall a. (a -> Int -> VirtualDOM) -> Array a -> VirtualDOM
+foldMapWithIndex f xs = foldMap (uncurry f) pairs
+  where pairs = zip xs (0 .. (length xs - 1))
+
+-- | We render a question by displaying its questionText and then rendering its
+-- | answers.
+renderQuestion :: Question -> QuestionId -> VirtualDOM
+renderQuestion (Question q) questionId = div $ do
   p ! className "question" $ text q.questionText
-  let isAnswered = isJust q.chosenAnswer
-  mconcat $ enumerateMap (\answer answerId -> do
-    let isChosen = isAnswered && answerId == fromJust q.chosenAnswer
-    let isCorrect = isAnswered && q.correctAnswer == answerId
-    div ! className (answerClasses isAnswered isCorrect isChosen)
-        ! (ifNot isAnswered $ onClick (send $ ClickAnswer questionId answerId))
-        $ text answer
-    ) q.answers
-  ) questions
-  where ifNot bool a = if bool then Attrs [] [] else a
+  foldMapWithIndex (renderAnswer (Question q) questionId) q.answers
 
 view :: State -> VirtualDOM
 view state = div $ do
   div ! className "right-side" $ do
     p ! className "score" $ text ("Score: " ++ show state.score)
     button ! onClick (send NewGame) $ text "new game"
-  renderQuestions state.questions
+  foldMapWithIndex renderQuestion state.questions
 
 main = renderToDOM "#app" =<< app
   { state: initialState
