@@ -7,7 +7,7 @@ import Control.Monad.Aff (launchAff)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Exception (EXCEPTION())
 import Control.Monad.Eff.Console (CONSOLE(), log)
-import Data.Array (length, zip, (..))
+import Data.Array (length, zip, (..), modifyAt)
 import Data.Array.Unsafe (unsafeIndex)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..), isJust)
@@ -17,9 +17,10 @@ import Data.Foldable (foldl)
 import Data.Foreign
 import Data.Foreign.Class (IsForeign, readProp, readJSON)
 import Data.List (singleton)
-import Data.Tuple (Tuple(..))
+import Data.Tuple (uncurry)
 import Network.HTTP.Affjax (AJAX(), get)
 import Pux
+import Pux.DOM (Attrs(..))
 import Pux.DOM.HTML.Elements (div, p, button, text)
 import Pux.DOM.HTML.Attributes (onClick, send, className)
 import Pux.Render.DOM
@@ -29,61 +30,67 @@ questionServiceUrl :: String
 --questionServiceUrl = "http://localhost:8080/question"
 questionServiceUrl = "http://54.174.99.38/question"
 
-newtype Answer = Answer {
-  answerId :: Int,
-  answerText :: String
-}
+-- | In several places we need to `map` over both an array's elements and its
+-- | indexes. (This is a natural operation in JavaScript, less so here.)
+enumerateMap :: forall a b. (a -> Int -> b) -> Array a -> Array b
+enumerateMap f xs = map (uncurry f) pairs
+  where pairs = zip xs (0 .. (length xs - 1))
 
+-- | It took me a while to figure out how to "render" a variable size array of
+-- | objects. Eventually I realized that VirtualDOM is a Monoid, so that if I
+-- | have e.g. renderOne :: a -> VirtualDOM, then I render xs :: Array a with
+-- |    mconcat $ map renderOne xs
+-- | I don't know why mconcat isn't built in to purescript.
+mconcat :: forall m. (Monoid m) => Array m -> m
+mconcat = foldl append mempty
+
+type Answer = String
+
+type AnswerId = Int
+
+-- | We define a newtype for Question so we can create an IsForeign instance.
 newtype Question = Question {
-  questionId :: Int,
-  questionText :: String,
-  answers :: Array Answer,
-  correctAnswer :: Int,
-  chosenAnswer :: Maybe Int
+  questionText  :: String,
+  answers       :: Array Answer,
+  correctAnswer :: AnswerId,
+  chosenAnswer  :: Maybe AnswerId  -- which answer the player clicked on
 }
 
+type QuestionId = Int
+
+-- | Deserializing from JSON is pretty straightforward, we just need to add an
+-- | extra Nothing value for chosenAnswer.
 instance questionIsForeign :: IsForeign Question where
   read value = do
-    questionText <- readProp "questionText" value
-    rawAnswers <- readProp "answers" value
+    questionText  <- readProp "questionText"  value
+    answers       <- readProp "answers"       value
     correctAnswer <- readProp "correctAnswer" value
-    let indexedAnswers =
-      map (\(Tuple a i) -> Answer { answerId: i, answerText: a })
-          (zip rawAnswers (0 .. (length rawAnswers - 1)))
     return $ Question {
-      questionId : -1,
       questionText : questionText,
-      answers : indexedAnswers,
+      answers : answers,
       correctAnswer : correctAnswer,
       chosenAnswer : Nothing
     }
 
-
-data Action = NewGame | ClickAnswer Int Int | QuestionReceived Question
+data Action =
+    NewGame                     -- start a new game
+  | ClickAnswer Int Int         -- click on questionId answerId
+  | QuestionReceived Question   -- receive an AJAX response with a question
 
 type State = {
-  score :: Int,
-  questions :: Array Question,
-  waitingForQuestion :: Boolean
+  score              :: Int,
+  questions          :: Array Question,
+  waitingForQuestion :: Boolean -- are we waiting for an AJAX call to return?
 }
 
-fakeQuestion :: Question
-fakeQuestion = Question {
-  questionId: 0,
-  questionText: "Is this a fake question?",
-  answers: [
-    Answer { answerId: 0, answerText: "yes" },
-    Answer { answerId: 1, answerText: "no" },
-    Answer { answerId: 2, answerText: "maybe" }
-  ],
-  correctAnswer: 0,
-  chosenAnswer: Nothing
-}
-
+-- | Start out with no questions.
 initialState :: State
-initialState = { score: 0, questions: [], waitingForQuestion: false }
+initialState = { score: 0, questions: [], waitingForQuestion: true }
 
-answerClicked :: Int -> Int -> State -> State
+-- | When you click on questionId answerId, we need to update the score,
+-- | set the chosenAnswer field for that question, and set the
+-- | waitingForQuestion flag.
+answerClicked :: QuestionId -> AnswerId -> State -> State
 answerClicked questionId answerId state =
   { score : newScore, questions: newQuestions, waitingForQuestion: true }
   where
@@ -91,31 +98,41 @@ answerClicked questionId answerId state =
       Question q | q.correctAnswer == answerId -> true
       _ -> false
     newScore = if isCorrect then state.score + 1 else state.score
-    newQuestions = map (\(Question q) ->
-      if q.questionId == questionId
-        then Question $ q { chosenAnswer = Just answerId }
-        else Question q) state.questions
+    newQuestions = fromJust $ modifyAt questionId updateChosen state.questions
+    updateChosen (Question q) = Question $ q { chosenAnswer = Just answerId }
 
+-- | we only want to *actually* add the question if we're waiting for it.
+-- | otherwise, we just return the state as is
+appendQuestion :: State -> Question -> State
+appendQuestion state question =
+  if state.waitingForQuestion
+  then state { questions = state.questions ++ [question],
+               waitingForQuestion = false }
+  else state
 
+-- How to update the state (and perform effects) for each action type.
 update :: forall eff. Update (ajax :: AJAX,
                               err :: EXCEPTION,
                               console :: CONSOLE| eff) State Action
 update action state input =
   case action of
+    -- for a NewGame action, we need to reset the state to the initialState
+    -- and make an AJAX request for a new question
     NewGame ->
       { state: initialState
-      , effects: [ do log "newgame", requestQuestion ] }
+      , effects: [ requestQuestion ] }
+    -- for a click on an answer, update the state with the clicked answer,
+    -- and make an AJAX request for a new question
     ClickAnswer questionId answerId ->
       { state: answerClicked questionId answerId state
-      , effects: [
-          do log ("click" ++ (show questionId) ++ (show answerId)),
-          requestQuestion
-        ]
+      , effects: [ requestQuestion ]
       }
+    -- for the result of a new question AJAX call, try to update the state
     QuestionReceived question ->
-      { state: addQuestion question state
+      { state: appendQuestion state question
       , effects: [] }
   where
+    -- AJAX boilerplate
     requestQuestion =
       launchAff $ do
         res <- get questionServiceUrl
@@ -124,36 +141,28 @@ update action state input =
           (Left err) -> log "Error parsing JSON!"
           (Right question) -> S.send input (singleton (QuestionReceived question))
 
-addQuestion :: Question -> State -> State
-addQuestion (Question question) state =
-  state { questions = state.questions ++ [questionWithId] }
-  where
-    questionWithId = Question $ question { questionId = questionId }
-    questionId = length state.questions
+-- | generate the css classes for an answer based on
+-- |    isAnswered -> isCorrect -> isChosen
+answerClasses :: Boolean -> Boolean -> Boolean -> String
+answerClasses false _    _      = "answer"
+answerClasses true  true  false = "answer correct"
+answerClasses true  true  true  = "answer correct chosen"
+answerClasses true  false false = "answer wrong"
+answerClasses true  false true  = "answer wrong chosen"
 
 renderQuestions :: Array Question -> VirtualDOM
-renderQuestions questions = mconcat $ map (\(Question q) -> do
-  p ! className "question" $ text (q.questionText)
+renderQuestions questions = mconcat $ enumerateMap (\(Question q) questionId -> do
+  p ! className "question" $ text q.questionText
   let isAnswered = isJust q.chosenAnswer
-  mconcat $ map (\(Answer a) -> do
-    let isChosen = isAnswered && a.answerId == fromJust q.chosenAnswer
-    let isCorrect = isAnswered && q.correctAnswer == a.answerId
-    div ! className (answerClasses [isAnswered, isCorrect, isChosen])
-        ! onClick (send $ ClickAnswer q.questionId a.answerId)
-        $ text a.answerText
+  mconcat $ enumerateMap (\answer answerId -> do
+    let isChosen = isAnswered && answerId == fromJust q.chosenAnswer
+    let isCorrect = isAnswered && q.correctAnswer == answerId
+    div ! className (answerClasses isAnswered isCorrect isChosen)
+        ! (ifNot isAnswered $ onClick (send $ ClickAnswer questionId answerId))
+        $ text answer
     ) q.answers
   ) questions
-  where
-    answerClasses :: Array Boolean -> String
-    answerClasses [false, _, _] = "answer"
-    answerClasses [true, true, false] = "answer correct"
-    answerClasses [true, true, true] = "answer correct chosen"
-    answerClasses [true, false, false] = "answer wrong"
-    answerClasses [true, false, true] = "answer wrong chosen"
-    answerClasses _ = ""
-
-mconcat :: forall m. (Monoid m) => Array m -> m
-mconcat = foldl append mempty
+  where ifNot bool a = if bool then Attrs [] [] else a
 
 view :: State -> VirtualDOM
 view state = div $ do
