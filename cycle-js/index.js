@@ -4,7 +4,14 @@ import {a, div, button, makeDOMDriver} from '@cycle/dom';
 import {makeHTTPDriver} from '@cycle/http';
 import {Record, List} from 'immutable';
 
-const QUESTION_SERVICE_URL = 'http://localhost:8080/question';
+//const QUESTION_SERVICE_URL = 'http://localhost:8080/question';
+const QUESTION_SERVICE_URL = 'http://54.174.99.38/question';
+
+function tapAndLog(x) {
+  console.log(x);
+  return x;
+}
+
 
 // The signals received from external sources.
 function intent(sources) {
@@ -22,20 +29,23 @@ function intent(sources) {
 
   // A HTTP response from the Question service is received, just extract its body.
   const questionReceivedAction$ = HTTP
+    .map(tapAndLog)
     .filter(res$ => res$.request.url.indexOf(QUESTION_SERVICE_URL) === 0)
     .mergeAll()
-    .map(res => res.body);
+    .map(res => res.body)
 
   // We need a new question when either we answer an old one, or when we start
   // a new game.
   const getNewQuestionAction$ = Rx.Observable.merge(
-    chooseAnswerAction$, newGameAction$).startWith(null);
+    chooseAnswerAction$, newGameAction$)
+    .map(() => QUESTION_SERVICE_URL);
 
   // Just return an object with all the actions in it.
   return {newGameAction$, chooseAnswerAction$,
           questionReceivedAction$, getNewQuestionAction$};
 }
 
+// Immutable data structures for questions and State
 const Question = Record({
   questionText: "",
   answers: [],
@@ -151,10 +161,11 @@ function main(sources) {
 
   return {
     DOM: vtree$,
-    HTTP: actions.getNewQuestionAction$.map(() => ({
-      url: QUESTION_SERVICE_URL,
-      method: 'GET'
-    }))
+    HTTP: actions.getNewQuestionAction$
+    //.map(() => QUESTION_SERVICE_({
+    //  //url: QUESTION_SERVICE_URL,
+    //  //method: 'GET'
+    //})).map(tapAndLog)
   };
 }
 
