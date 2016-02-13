@@ -96,7 +96,7 @@ randomNextToken transitions token =
 
 -- | Load some (JSON-serialized) transitions from a file
 loadTransitions :: String -> IO Transitions
-loadTransitions = fmap fromJust . liftM decode . BS.readFile
+loadTransitions = liftM (fromJust . decode) . BS.readFile
 
 questionTransitions :: IO Transitions
 questionTransitions = loadTransitions "questions.json"
