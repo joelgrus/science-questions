@@ -7,7 +7,7 @@ import Control.Monad.Aff (launchAff)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Exception (EXCEPTION())
 import Control.Monad.Eff.Console (CONSOLE(), log)
-import Data.Array (concat, filter, length, zip, (..), modifyAt, snoc)
+import Data.Array (filter, length, zip, (..), updateAt, snoc)
 import Data.Array.Unsafe (unsafeIndex)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..), isJust)
@@ -38,8 +38,8 @@ newtype Question = Question {
 }
 
 type QuestionId = Int
-type Answer = String
-type AnswerId = Int
+type Answer     = String
+type AnswerId   = Int
 
 -- | Deserializing from JSON is pretty straightforward, we just need to add an
 -- | extra Nothing value for chosenAnswer.
@@ -77,19 +77,19 @@ answerClicked :: QuestionId -> AnswerId -> State -> State
 answerClicked questionId answerId state =
   { score : newScore, questions: newQuestions, waitingForQuestion: true }
   where
-    isCorrect = case state.questions `unsafeIndex` questionId of
-      Question q | q.correctAnswer == answerId -> true
-      _ -> false
-    newScore = if isCorrect then state.score + 1 else state.score
-    newQuestions = fromJust $ modifyAt questionId updateChosen state.questions
-    updateChosen (Question q) = Question $ q { chosenAnswer = Just answerId }
+    q = case state.questions `unsafeIndex` questionId of Question q' -> q'
+    newScore =
+      if q.correctAnswer == answerId then state.score + 1 else state.score
+    answeredQuestion = Question $ q { chosenAnswer = Just answerId }
+    newQuestions =
+      fromJust $ updateAt questionId answeredQuestion state.questions
 
 -- | we only want to *actually* add the question if we're waiting for it.
 -- | otherwise, we just return the state as is
 appendQuestion :: Question -> State -> State
 appendQuestion question state =
   if state.waitingForQuestion
-  then state { questions = snoc state.questions question,
+  then state { questions          = snoc state.questions question,
                waitingForQuestion = false }
   else state
 
@@ -134,11 +134,11 @@ renderAnswer (Question q) questionId answer answerId =
   where
     isAnswered = isJust q.chosenAnswer
     isChosen   = isAnswered && answerId == fromJust q.chosenAnswer
-    isCorrect  = isAnswered && answerId == q.correctAnswer
+    isCorrect  = answerId == q.correctAnswer
 
     classes = joinWith " " $ map snd $ filter fst [
       Tuple true                          "answer",
-      Tuple (isAnswered && isChosen)      "chosen",
+      Tuple isChosen                      "chosen",
       Tuple (isAnswered && isCorrect)     "correct",
       Tuple (isAnswered && not isCorrect) "wrong"
     ]
@@ -161,10 +161,10 @@ foldMapWithIndex f xs = foldMap (uncurry f) pairs
 -- | answers.
 renderQuestion :: Question -> QuestionId -> VirtualDOM
 renderQuestion (Question q) questionId = div $ do
-  p ! className "question" $ text $ questionNumber ++ q.questionText
+  p ! className "question" $ text $ questionNumber ++ ". " ++ q.questionText
   foldMapWithIndex (renderAnswer (Question q) questionId) q.answers
   where
-    questionNumber = show (questionId + 1) ++ ". "
+    questionNumber = show (questionId + 1)
 
 view :: State -> VirtualDOM
 view state = div $ do
