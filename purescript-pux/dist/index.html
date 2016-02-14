@@ -2,14 +2,20 @@
 <head>
 <title>Science Quiz</title>
 <style>
-.right-side {
+.sidebar {
   position: fixed;
   top: 0;
   left: 500px;
   width: 200px;
   height: 100%;
+  border-left: solid black 1px;
+  margin: 10px;
+  padding: 10px;
 }
-
+a {
+  text-decoration: initial;
+  padding: 3px;
+}
 .question {
   max-width: 480px;
   font-weight: bold;
@@ -64,6 +70,7 @@
 </style>
 </head>
 <body>
+  <h1>Science Quiz</h1>
   <div id="app"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/0.14.7/react.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/0.14.7/react-dom.min.js"></script>

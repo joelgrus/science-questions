@@ -7,7 +7,8 @@ module Lib
     ( startApp
     ) where
 
-import Control.Monad (liftM, replicateM)
+import Control.Applicative (liftA2)
+import Control.Monad (guard, liftM, replicateM)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson
 import Data.Aeson.TH
@@ -15,9 +16,10 @@ import qualified Data.ByteString.Lazy as BS
 import Data.List (unfoldr)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust)
+import Debug.Trace (trace)
 import Network.Wai
 import Network.Wai.Handler.Warp
-import Network.Wai.Middleware.Cors
+import Network.Wai.Middleware.Cors (simpleCors)
 import Servant
 import System.Random (randomRIO)
 
@@ -46,17 +48,12 @@ stop = "__STOP__"
 -- | Given a token, find a next token in an effectful way. (Typically random.)
 type GetNextToken = Token -> IO Token
 
--- | Produce a sentence by generating tokens up until the 'stop' sentinel.
--- | (I bet there's a magical one-line way of doing this.)
-generate :: GetNextToken -> IO String
-generate nextAfter = loop start []
-  where
-    loop :: Token -> [Token] -> IO String
-    loop prev tokens = do
-      token <- nextAfter prev
-      if token == stop
-        then return $ smartJoin tokens
-        else loop token (tokens ++ [token])
+tokensFrom :: Token -> GetNextToken -> IO [Token]
+tokensFrom startToken getNext = do
+  nextToken <- getNext startToken   -- nextToken :: Token
+  if nextToken == stop
+    then return []                  -- empty list in an IO context
+    else liftA2 (:) (pure nextToken) (tokensFrom nextToken getNext)
 
 -- | We don't want to use `unwords` because we don't want to put spaces in
 -- | front of punctuation. This is a somewhat hacky replacement.
@@ -67,6 +64,9 @@ smartJoin = dropWhile (== ' ') . concat . addSeparators
     addSeparator word
       | word `elem` ["?", ",", "."] = ["",  word]
       | otherwise                   = [" ", word]
+
+generate :: GetNextToken -> IO String
+generate = fmap smartJoin . tokensFrom start
 
 -- | And now we're set up to generate random Questions. We need to specify how
 -- | many answers we want, a GetNextToken function for the questions themselves,
@@ -83,6 +83,16 @@ randomQuestion numAnswers getNextQuestionToken getNextAnswerToken =
 
 type Transitions = M.Map Token [Token]
 
+-- | Load some (JSON-serialized) transitions from a file
+loadTransitions :: String -> IO Transitions
+loadTransitions = liftM (fromJust . decode) . BS.readFile
+
+questionTransitions :: IO Transitions
+questionTransitions = loadTransitions "questions.json"
+
+answerTransitions :: IO Transitions
+answerTransitions = loadTransitions "answers.json"
+
 -- | Pick a random element of a list, which better not be empty!
 pick :: [a] -> IO a
 pick xs = randomRIO (0, (length xs - 1)) >>= return . (xs !!)
@@ -94,46 +104,22 @@ randomNextToken transitions token =
     Just tokens -> pick tokens
     _           -> return stop
 
--- | Load some (JSON-serialized) transitions from a file
-loadTransitions :: String -> IO Transitions
-loadTransitions = liftM (fromJust . decode) . BS.readFile
-
-questionTransitions :: IO Transitions
-questionTransitions = loadTransitions "questions.json"
-
-answerTransitions :: IO Transitions
-answerTransitions = loadTransitions "answers.json"
-
--- | Just some CORS boilerplate so we can call this API from other IP addresses.
-questionCors :: Middleware
-questionCors = cors $ const (Just questionResourcePolicy)
-
-questionResourcePolicy :: CorsResourcePolicy
-questionResourcePolicy =
-    CorsResourcePolicy
-        { corsOrigins = Nothing -- gives you /*
-        , corsMethods = ["GET"]
-        , corsRequestHeaders = simpleHeaders -- adds "Content-Type" to defaults
-        , corsExposedHeaders = Nothing
-        , corsMaxAge = Nothing
-        , corsVaryOrigin = False
-        , corsRequireOrigin = False
-        , corsIgnoreFailures = False
-        }
-
 type API = "question" :> Get '[JSON] Question
 
+getRandomQuestionUsingTransitions :: IO Question
+getRandomQuestionUsingTransitions = do
+  qt <- questionTransitions
+  at <- answerTransitions
+  randomQuestion 4 (randomNextToken qt) (randomNextToken at)
+
+server :: Server API
+server = liftIO getRandomQuestionUsingTransitions
+
 startApp :: IO ()
-startApp = run 8080 $ questionCors $ app
+startApp = run 8080 $ simpleCors $ app
 
 app :: Application
 app = serve api server
 
 api :: Proxy API
 api = Proxy
-
-server :: Server API
-server = liftIO $ do
-  qt <- questionTransitions
-  at <- answerTransitions
-  randomQuestion 4 (randomNextToken qt) (randomNextToken at)

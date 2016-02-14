@@ -72,6 +72,18 @@ def make_transitions(sentences):
             transitions[prev_word].append(next_word)
     return transitions
 
+# given transitions and a previous word, pick a random next word
+def next_word(transitions, word):
+    return random.choice(transitions.get(word, [STOP]))
+
+# and then generate a whole sequence of words
+# e.g. print(''.join(markov_gen(q_transitions))
+def markov_gen(transitions):
+    word = next_word(transitions, START)
+    while word != STOP:
+      yield word
+      word = next_word(transitions, word)
+
 # one set of transitions for questions, one for answers, and we'll write them
 # out to json, so that our service can use them
 q_transitions = make_transitions(questions)
