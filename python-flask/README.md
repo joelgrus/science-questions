@@ -6,7 +6,7 @@ Even though you're not really supposed to, I'm running it in quasi-production
 with <a href = "http://gunicorn.org/">gunicorn</a>.
 
 ```
-EXPORT HOST=localhost
-EXPORT PORT=8080
+export HOST=localhost
+export PORT=8080
 sudo nohup gunicorn -w 4 -b $HOST:$PORT server:app
 ```
