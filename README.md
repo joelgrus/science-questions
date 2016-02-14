@@ -14,9 +14,9 @@ three phases:
 3. Front-end: create a web-app that consumes the API and allows you to play the
  quiz.
 
-And because I am a glutton for languages, I implemented things multiple times.
-There is a Flask version of the backend (easy) and a Haskell version of the backend
-(not easy). There is a cycle.js version of the frontend (medium) and a purescript-pux
-version of the frontend (not medium).
+![science quiz](https://raw.githubusercontent.com/joelgrus/science-questions/master/science-quiz.png)
 
-So bear with me.
+The data layer is implemented in python. (python-data)
+The backend was originally implemented in Haskell (haskell-servant) but I couldn't figure out how to deploy the binary to EC2, so I also created a Python version (python-flask).
+The first version of the frontend was in cycle.js (cycle-js) but for some reason it stopped working. The current version
+is implemented in PureScript (purescript-pux).
