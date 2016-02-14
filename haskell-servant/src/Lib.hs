@@ -85,7 +85,7 @@ type Transitions = M.Map Token [Token]
 
 -- | Load some (JSON-serialized) transitions from a file
 loadTransitions :: String -> IO Transitions
-loadTransitions = liftM (fromJust . decode) . BS.readFile
+loadTransitions = fmap (fromJust . decode) . BS.readFile
 
 questionTransitions :: IO Transitions
 questionTransitions = loadTransitions "questions.json"
@@ -95,7 +95,9 @@ answerTransitions = loadTransitions "answers.json"
 
 -- | Pick a random element of a list, which better not be empty!
 pick :: [a] -> IO a
-pick xs = randomRIO (0, (length xs - 1)) >>= return . (xs !!)
+pick xs = do
+  idx <- randomRIO (0, length xs - 1) -- choose a random index
+  return (xs !! idx)                  -- return that element of the list
 
 -- | An implementation of GetNextToken based on a Transitions map.
 randomNextToken :: Transitions -> GetNextToken
