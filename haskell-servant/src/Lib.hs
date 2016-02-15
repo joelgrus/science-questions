@@ -8,19 +8,18 @@ module Lib
     ) where
 
 import Control.Applicative (liftA2)
-import Control.Monad (guard, liftM, replicateM)
+import Control.Monad (liftM, replicateM)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson
 import Data.Aeson.TH
 import qualified Data.ByteString.Lazy as BS
-import Data.List (unfoldr)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust)
-import Debug.Trace (trace)
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Network.Wai.Middleware.Cors (simpleCors)
 import Servant
+import System.IO.Memoize (eagerlyOnce)
 import System.Random (randomRIO)
 
 -- | First, the machinery around generating questions.
@@ -111,26 +110,25 @@ randomNextToken transitions token =
     Just tokens -> pick tokens
     _           -> return Stop
 
--- | Generates a random question using the deserialized question and answer
--- | transitions.
-getRandomQuestionUsingTransitions :: IO Question
-getRandomQuestionUsingTransitions = do
-  qt <- questionTransitions
-  at <- answerTransitions
-  randomQuestion 4 (randomNextToken qt) (randomNextToken at)
-
--- | Everything below here is basically haskell-servant boilerplate
+-- | And now we have to implement the servant parts.
 
 type API = "question" :> Get '[JSON] Question
 
-server :: Server API
-server = liftIO getRandomQuestionUsingTransitions
-
 startApp :: IO ()
-startApp = run 8080 $ simpleCors $ app
+startApp = do
+  -- loading / creating the transitions is expensive, so we do it eagerlyOnce
+  cachedQt <- eagerlyOnce questionTransitions
+  cachedAt <- eagerlyOnce answerTransitions
+  run 8080 $ simpleCors $ app cachedQt cachedAt
 
-app :: Application
-app = serve api server
+app :: IO Transitions -> IO Transitions -> Application
+app cachedQt cachedAt = serve api (server cachedQt cachedAt)
+
+server :: IO Transitions -> IO Transitions -> Server API
+server cachedQt cachedAt = liftIO $ do
+  qt <- cachedQt
+  at <- cachedAt
+  randomQuestion 4 (randomNextToken qt) (randomNextToken at)
 
 api :: Proxy API
 api = Proxy
