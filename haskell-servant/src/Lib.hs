@@ -36,14 +36,14 @@ data Question = Question
 $(deriveJSON defaultOptions ''Question)
 
 -- | We create a markov chain of tokens, which are just words.
-type Token = String
+data Token = Start | Stop | Word String deriving (Eq, Ord)
 
--- | We have sentinel tokens indicating the start and stop of a sentence.
-start :: Token
-start = "__START__"
-
-stop :: Token
-stop = "__STOP__"
+-- | As part of our deserialization, we'll need to be able to create Tokens
+-- | from Strings, so we need a Read instance.
+instance Read Token where
+  readsPrec _ "__START__" = [(Start,  "")]
+  readsPrec _ "__STOP__"  = [(Stop,   "")]
+  readsPrec _ w           = [(Word w, "")]
 
 -- | Given a token, find a next token in an effectful way. (Typically random.)
 type GetNextToken = Token -> IO Token
@@ -51,9 +51,9 @@ type GetNextToken = Token -> IO Token
 tokensFrom :: Token -> GetNextToken -> IO [Token]
 tokensFrom startToken getNext = do
   nextToken <- getNext startToken   -- nextToken :: Token
-  if nextToken == stop
-    then return []                  -- empty list in an IO context
-    else liftA2 (:) (pure nextToken) (tokensFrom nextToken getNext)
+  case nextToken of
+    Stop  -> return []
+    token -> liftA2 (:) (pure token) (tokensFrom token getNext)
 
 -- | We don't want to use `unwords` because we don't want to put spaces in
 -- | front of punctuation. This is a somewhat hacky replacement.
@@ -61,12 +61,13 @@ smartJoin :: [Token] -> String
 smartJoin = dropWhile (== ' ') . concat . addSeparators
   where
     addSeparators = concatMap addSeparator
-    addSeparator word
-      | word `elem` ["?", ",", "."] = ["",  word]
-      | otherwise                   = [" ", word]
+    addSeparator token = case token of
+      Word w | w `elem` ["?", ",", "."] -> ["",  w]
+      Word w                            -> [" ", w]
+      _                                 -> []
 
 generate :: GetNextToken -> IO String
-generate = fmap smartJoin . tokensFrom start
+generate = fmap smartJoin . tokensFrom Start
 
 -- | And now we're set up to generate random Questions. We need to specify how
 -- | many answers we want, a GetNextToken function for the questions themselves,
@@ -83,9 +84,12 @@ randomQuestion numAnswers getNextQuestionToken getNextAnswerToken =
 
 type Transitions = M.Map Token [Token]
 
--- | Load some (JSON-serialized) transitions from a file
+-- | Load some (JSON-serialized) transitions from a file. `decode`
+-- | will return a `Maybe (M.map Text [Text])`, which we then need to pull out
+-- | of the Maybe and convert to a M.map Token [Token]
 loadTransitions :: String -> IO Transitions
-loadTransitions = fmap (fromJust . decode) . BS.readFile
+loadTransitions = fmap (textToTokens . fromJust . decode) . BS.readFile
+  where textToTokens = M.map (map read) . M.mapKeys read
 
 questionTransitions :: IO Transitions
 questionTransitions = loadTransitions "questions.json"
@@ -104,7 +108,7 @@ randomNextToken :: Transitions -> GetNextToken
 randomNextToken transitions token =
   case M.lookup token transitions of
     Just tokens -> pick tokens
-    _           -> return stop
+    _           -> return Stop
 
 type API = "question" :> Get '[JSON] Question
 
