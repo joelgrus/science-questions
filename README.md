@@ -18,6 +18,8 @@ three phases:
 
 ![science quiz](https://raw.githubusercontent.com/joelgrus/science-questions/master/science-quiz.png)
 
+For now there's a version running at http://joelgrus.com/experiments/science-questions/
+
 The data layer is implemented in python. (python-data)
 
 The backend was originally implemented in Haskell (haskell-servant) but I couldn't figure out how to deploy the binary to EC2, so I also created a Python version (python-flask).
