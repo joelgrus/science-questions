@@ -10,8 +10,8 @@ import           Node.Express.Handler
 import           Node.Express.Response
 import           Prelude hiding (apply)
 
-import ScienceQuestions.Question
-import ScienceQuestions.Transitions
+import           ScienceQuestions.Question
+import           ScienceQuestions.Transitions
 
 -- | The handler for the /question endpoint. Returns a random question.
 questionHandler :: forall e. Transitions ->
