@@ -14,8 +14,6 @@ import ScienceQuestions.Question
 import ScienceQuestions.Transitions
 
 -- | The handler for the /question endpoint. Returns a random question.
-type Handler e = HandlerM (express :: EXPRESS | e) Unit
--- |    sendJson :: forall e a. a -> Handler e
 questionHandler :: forall e. Transitions ->
                              Transitions ->
                              Handler (random :: RANDOM | e)
