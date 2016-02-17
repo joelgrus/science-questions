@@ -20,6 +20,6 @@ The data layer is implemented in python. (python-data)
 
 The backend was originally implemented in Haskell (haskell-servant) but I couldn't figure out how to deploy the binary to EC2, so I also created a Python version (python-flask).
 
-The first version of the frontend was in cycle.js (cycle-js) but for some reason it stopped working. 
+The first version of the frontend was in cycle.js (cycle-js) but for some reason it stopped working.
 
 The current version of the frontend is implemented in PureScript (purescript-pux).

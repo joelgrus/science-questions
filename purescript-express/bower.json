@@ -1,0 +1,25 @@
+{
+  "name": "purescript-express",
+  "version": "1.0.0",
+  "moduleType": [
+    "node"
+  ],
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "output"
+  ],
+  "dependencies": {
+    "purescript-console": "^0.1.0",
+    "purescript-maps": "~0.5.4",
+    "purescript-json": "~0.5.0",
+    "purescript-random": "~0.2.3",
+    "purescript-node-http": "~0.2.0"
+  },
+  "resolutions": {
+    "purescript-node-buffer": "~0.2.0",
+    "purescript-node-streams": "~0.3.0",
+    "purescript-node-http": "~0.2.0"
+  }
+}
