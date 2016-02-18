@@ -18,7 +18,7 @@ import           Node.FS (FS())
 import           Node.FS.Sync (readTextFile)
 import           Prelude
 
-import ScienceQuestions.Token
+import           ScienceQuestions.Token
 
 -- | Transitions indicate the Tokens that can follow a given Token.
 type Transitions = M.Map Token (Array Token)

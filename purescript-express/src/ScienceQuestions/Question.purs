@@ -4,12 +4,12 @@ module ScienceQuestions.Question
   , randomQuestion
   ) where
 
-import Control.Monad.Eff
-import Control.Monad.Eff.Random (RANDOM(), randomInt)
-import Data.Array (replicateM)
-import Prelude
+import           Control.Monad.Eff
+import           Control.Monad.Eff.Random (RANDOM(), randomInt)
+import           Data.Array (replicateM)
+import           Prelude
 
-import ScienceQuestions.Token
+import           ScienceQuestions.Token
 
 -- | If I were more clever, I would figure out a way to share code with the
 -- | client-side PureScript.
