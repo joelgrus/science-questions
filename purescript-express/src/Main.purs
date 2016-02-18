@@ -24,6 +24,7 @@ questionHandler qTransitions aTransitions = do
                                          (randomNextToken aTransitions)
   sendJson question
 
+-- | Setup the express app, pretty much copied from the purescript-express docs
 appSetup :: forall e. Transitions ->
                       Transitions ->
                       App (random :: RANDOM, console :: CONSOLE | e)

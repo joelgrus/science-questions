@@ -5,11 +5,11 @@ module ScienceQuestions.Token
   , generateString
   ) where
 
-import Control.Monad.Eff
-import Data.Array (reverse, snoc, elemIndex, concatMap)
-import Data.Maybe (isJust)
-import Data.String (dropWhile, joinWith)
-import Prelude
+import           Control.Monad.Eff
+import           Data.Array (reverse, snoc, elemIndex, concatMap)
+import           Data.Maybe (isJust)
+import           Data.String (dropWhile, joinWith)
+import           Prelude
 
 -- | a Token is either the `Start` of a sentence, the `Stop` of a sentence,
 -- | or some `Word` w
